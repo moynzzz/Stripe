@@ -14,6 +14,9 @@ use Payum\Core\Request\GetHttpRequest;
 use Payum\Core\Request\RenderTemplate;
 use Payum\Stripe\Keys;
 use Payum\Stripe\Request\Api\ObtainToken;
+use Stripe\Product;
+use Stripe\Stripe;
+use Stripe\Checkout\Session;
 
 /**
  * @param Keys $keys
@@ -81,10 +84,31 @@ class ObtainTokenAction implements ActionInterface, GatewayAwareInterface, ApiAw
             return;
         }
 
+        Stripe::setApiKey($this->keys->getSecretKey());
+
+        $product = Product::create([
+            'name' => $model['description'],
+        ]);
+
+        $session = Session::create([
+            'payment_method_types' => ['card'],
+            'line_items' => [[
+                'price_data' => [
+                    'product' => $product->id,
+                    'unit_amount' => $model['amount'],
+                    'currency' => $model['currency'],
+                ],
+                'quantity' => 1,
+            ]],
+            'mode' => 'payment',
+            'success_url' => $request->getToken()->getAfterUrl() . '&success=true',
+            'cancel_url' => $request->getToken()->getAfterUrl() . '&success=false',
+        ]);
+
         $this->gateway->execute($renderTemplate = new RenderTemplate($this->templateName, array(
             'model' => $model,
             'publishable_key' => $this->keys->getPublishableKey(),
-            'actionUrl' => $request->getToken() ? $request->getToken()->getTargetUrl() : null,
+            'session_id' => $session->id,
         )));
 
         throw new HttpResponse($renderTemplate->getResult());
